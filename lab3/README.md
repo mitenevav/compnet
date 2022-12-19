@@ -1,3 +1,3 @@
 # Instruction 
-* run: `pip install -r requiremets.txt`
+* run: `pip install -r requirements.txt`
 * run lab3.py
