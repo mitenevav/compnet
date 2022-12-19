@@ -7,7 +7,7 @@ class StatsEnum(enum.Enum):
     msg_popped = 'popped'
 
 
-class Logger:
+class Client:
     def __init__(self, name):
         self.name = name
         self.stats = {}

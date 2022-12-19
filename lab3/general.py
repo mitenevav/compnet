@@ -1,51 +1,7 @@
-from threading import Thread, Lock, Barrier
-# from multiprocessing import Process as Thread, Lock, Barrier
 from collections import Counter
-import time
-
-from SRP import Sender, Receiver
-from channel import Channel
-
-
-class MsgChannel:
-    def __init__(self):
-        self._sender = Sender(window_size=5, timeout=1)
-        self._receiver = Receiver()
-        self._channel_main = Channel()
-        self._channel_back = Channel()
-        self._sender_thread = None
-        self._receiver_thread = None
-        self._msg_flag = False
-        self.mutex = Lock()
-
-    def push(self, data=None):
-        self.mutex.acquire()
-        self._receiver.clear_data()
-        self._channel_main.clear()
-        self._channel_back.clear()
-        self._sender_thread = Thread(target=self._sender.run,
-                                     args=(self._channel_back, self._channel_main, (data,), False))
-        self._receiver_thread = Thread(target=self._receiver.run,
-                                       args=(self._channel_main, self._channel_back, False))
-        self._sender_thread.start()
-        self._receiver_thread.start()
-        self._sender_thread.join()
-        self._receiver_thread.join()
-        self._msg_flag = True
-        self.mutex.release()
-
-    def get(self):
-        while True:
-            self.mutex.acquire()
-            if self._msg_flag:
-                self._msg_flag = False
-                data = self._receiver.data[0] if self._receiver.data else None
-                self._receiver.clear_data()
-                self.mutex.release()
-                break
-            self.mutex.release()
-            time.sleep(0.1)
-        return data
+from multiprocessing import Process as Thread, Lock
+from host import Host
+from tabulate import tabulate
 
 
 class NetworkNode:
@@ -56,9 +12,9 @@ class NetworkNode:
         self._out_connections = {}
 
     def connect(self, other):
-        self._in_connections[other.index] = MsgChannel()
+        self._in_connections[other.index] = Host()
         other.add_out_conn(self.index, self._in_connections[other.index])
-        self._out_connections[other.index] = MsgChannel()
+        self._out_connections[other.index] = Host()
         other.add_in_conn(self.index, self._out_connections[other.index])
 
     def add_in_conn(self, index, channel):
@@ -81,19 +37,23 @@ class General(NetworkNode):
     def __init__(self, index, barrier, byzantine=False):
         super(General, self).__init__(index, barrier)
         self.byzantine = byzantine
+        self.result = []
+        self.mutex = Lock()
 
     def run(self):
-        if self.byzantine:
-            pattern = 'f' + str(self.index) + '_{}'
-            values = [pattern.format(i) for i in self._out_connections.keys()]
-        else:
-            values = ['t' + str(self.index) for i in self._out_connections.keys()]
+        values = ['f' + str(i) if self.byzantine else 't' + str(self.index) for i in self._out_connections.keys()]
         t1_results = self.sendall(values)
+
         self.barrier.wait()
         self.barrier.reset()
-        print('General{} got: {}'.format(self.index, t1_results))
+
+        self.mutex.acquire()
+        print(f"General {self.index} got: \n"
+              f"{tabulate([[x, t1_results[x]] for x in t1_results], headers=['Генерал', 'Информация'], tablefmt='outline')}\n")
+        self.mutex.release()
+
         if self.byzantine:
-            pattern = 'f' + str(self.index) + '_{}{}'
+            pattern = 'f{}{}'
             values = []
             for i in self._out_connections.keys():
                 column = t1_results.copy()
@@ -102,9 +62,16 @@ class General(NetworkNode):
                 values.append(column)
         else:
             values = [t1_results for i in self._out_connections.keys()]
+
         t2_results = self.sendall(values)
-        print('General{} got: {}'.format(self.index, t2_results))
+
+        self.mutex.acquire()
+        print(f"General {self.index} have formed: \n"
+              f"{tabulate([[x, t2_results[x]] for x in t2_results], headers=['Генерал', 'Информация'], tablefmt='outline')}\n")
+        self.mutex.release()
+
         self.barrier.wait()
+
         info_matrix = list(t2_results.values())
         info_matrix.append(t1_results)
         indices = set()
@@ -119,9 +86,13 @@ class General(NetworkNode):
                     counter[column[index]] += 1
             common = counter.most_common(2)
             if len(common) > 1 and common[0][1] == common[1][1]:
-                result[index] = None
+                result[index] = 'None'
             else:
                 result[index] = common[0][0]
         keys = sorted(list(result.keys()))
         result_sorted = {k: result[k] for k in keys}
-        print('General{} result: {}'.format(self.index, result_sorted))
+
+        self.mutex.acquire()
+        print(f"General {self.index} result: \n"
+              f"{tabulate([[x, result_sorted[x]] for x in result_sorted], headers=['Генерал', 'Информация'], tablefmt='outline')}\n")
+        self.mutex.release()

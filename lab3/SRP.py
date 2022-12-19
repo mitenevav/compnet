@@ -1,7 +1,7 @@
 import enum
 import time
 
-from base_logger import Logger
+from client import Client
 from channel import Package, Codes
 
 
@@ -17,7 +17,7 @@ class NodeInfo:
         self.timestamp = time.time()
 
 
-class Sender(Logger):
+class Sender(Client):
     def __init__(self, window_size=2, timeout=0.1):
         super().__init__('SRP Sender')
         self._window_size = window_size
@@ -58,13 +58,17 @@ class Sender(Logger):
                         nodes[max_key + 1] = NodeInfo()
 
 
-class Receiver(Logger):
-    def __init__(self):
+class Receiver(Client):
+    def __init__(self, result):
         super().__init__('SRP Receiver')
-        self.data = []
+        self.data = result
 
     def clear_data(self):
-        self.data = []
+        while not self.data.empty():
+            self.data.get()
+
+    def get(self):
+        return self.data.get() if not self.data.empty() else None
 
     def run(self, in_channel, out_channel, need_print=True):
         data = {}
@@ -78,5 +82,6 @@ class Receiver(Logger):
                 package = Package(index=msg.index, code=Codes.APPROVE)
                 self.channel_append(out_channel, package, need_print)
                 if term_flag and sorted(list(data.keys())) == list(range(len(data))):
-                    self.data.extend(filter(lambda item: item is not None, sorted(data.values())))
+                    for x in filter(lambda item: item is not None, sorted(data.values())):
+                        self.data.put(x)
                     break

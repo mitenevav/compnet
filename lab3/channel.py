@@ -14,9 +14,9 @@ Package = namedtuple('Package', field_names=['index', 'code', 'data'], defaults=
 
 
 class Channel:
-    def __init__(self, loss_chance=0.0):
+    def __init__(self, q,  loss_chance=0.0):
         self._loss_chance = min(1.0, max(0.0, loss_chance))
-        self._queue = []
+        self._queue = q
 
     @property
     def loss_chance(self):
@@ -27,21 +27,27 @@ class Channel:
         self._loss_chance = min(1.0, max(0.0, loss_chance))
 
     def __len__(self):
-        return len(self._queue)
+        return self._queue.qsize()
 
     def __bool__(self):
-        return bool(self._queue)
+        l = self._queue.empty()
+        if not l:
+            b = self._queue
+            # print(l)
+        return not l
 
     def append(self, package):
         if random() >= self.loss_chance:
-            self._queue.append(package)
+            self._queue.put(package)
             return True
         return False
 
     def pop(self):
-        return self._queue.pop(0)
+        l = self._queue.qsize()
+        if l == 0:
+            return None
+        return self._queue.get()
 
     def clear(self):
-        self._queue.clear()
-
-
+        while not self._queue.empty():
+            self._queue.get()
